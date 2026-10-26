@@ -389,9 +389,9 @@ impl DurableObject for Repository {
                     Ok(selection) => selection,
                     Err(resp) => return resp,
                 };
-                let ref_name = parts.get(3).unwrap_or(&"main");
+                let ref_name = &decode_path_segment(parts.get(3).unwrap_or(&"main"));
                 let sub_path = if parts.len() > 4 {
-                    parts[4..].join("/")
+                    decode_path_segment(&parts[4..].join("/"))
                 } else {
                     String::new()
                 };
@@ -420,9 +420,9 @@ impl DurableObject for Repository {
                     Ok(selection) => selection,
                     Err(resp) => return resp,
                 };
-                let ref_name = parts.get(3).unwrap_or(&"main");
+                let ref_name = &decode_path_segment(parts.get(3).unwrap_or(&"main"));
                 let sub_path = if parts.len() > 4 {
-                    parts[4..].join("/")
+                    decode_path_segment(&parts[4..].join("/"))
                 } else {
                     String::new()
                 };
@@ -496,9 +496,9 @@ impl DurableObject for Repository {
                     .await
             }
             (Method::Get, "raw") => {
-                let ref_name = parts.get(3).unwrap_or(&"main");
+                let ref_name = &decode_path_segment(parts.get(3).unwrap_or(&"main"));
                 let sub_path = if parts.len() > 4 {
-                    parts[4..].join("/")
+                    decode_path_segment(&parts[4..].join("/"))
                 } else {
                     String::new()
                 };
@@ -1146,6 +1146,28 @@ fn pkt_line(buf: &mut Vec<u8>, data: &str) {
     let len = 4 + data.len();
     buf.extend_from_slice(format!("{:04x}", len).as_bytes());
     buf.extend_from_slice(data.as_bytes());
+}
+
+/// Percent-decode a URL path segment (e.g. `my%20file.txt` -> `my file.txt`).
+/// Unlike form decoding, `+` is left as-is. Invalid escapes pass through unchanged.
+fn decode_path_segment(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Check if a string is a 40-character hex SHA-1 hash.
